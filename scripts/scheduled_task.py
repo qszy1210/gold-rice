@@ -12,7 +12,7 @@ from datetime import datetime
 def main() -> None:
     now = datetime.now()
     print(f"[scheduled_task.py] 当前时间：{now.isoformat()}")
-    printf("定时任务执行完成。")
+    print("定时任务执行完成。")
 
 
 if __name__ == "__main__":
