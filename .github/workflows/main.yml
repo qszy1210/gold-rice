@@ -1,0 +1,43 @@
+name: Demo GitHub Actions Workflow
+
+# 该工作流展示了 GitHub Actions 的两种触发方式：
+#  - push: 当代码被推送到默认分支时
+#  - schedule: 根据 cron 表达式定时运行【569932550132912†L1626-L1649】
+
+on:
+  # 当任何分支有提交时触发（可以根据需要限定到 `main` 或 `master`）
+  push:
+    branches: [ "main" ]
+  # 使用 POSIX cron 语法的定时触发【569932550132912†L1651-L1669】
+  schedule:
+    - cron: '0 18 * * *'  # 每日 18:00 UTC 运行，具体时间可根据需要调整
+
+jobs:
+  build:
+    # 指定运行环境
+    runs-on: ubuntu-latest
+    # 注入环境变量，读取仓库设置的 secrets；如果某些值未设置，脚本会自行判断【732225639440178†L488-L520】
+    env:
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+      EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Run scheduled task script
+        run: python scripts/scheduled_task.py
+
+      - name: Send email (if secrets configured)
+        run: python scripts/send_email.py
