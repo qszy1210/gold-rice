@@ -1,47 +1,33 @@
-name: Demo GitHub Actions Workflow
+name: Gmail SMTP Demo
 
 on:
-  # 任何分支的 push 都触发，便于调试
   push:
-    branches:
-      - '**'
-  # 手动触发按钮（Actions 页 → 选中工作流 → Run workflow）
+    branches: ['**']      # 调试期放宽；上线后可收紧到 main
   workflow_dispatch:
-  # 定时（UTC），每天一次，便于观察
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '*/30 * * * *' # 每 30 分钟（UTC）演示一次
 
 jobs:
-  demo:
+  send-mail:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Show runner info
-        run: |
-          echo "Actor: $GITHUB_ACTOR"
-          echo "Repo:  $GITHUB_REPOSITORY"
-          echo "Ref:   $GITHUB_REF"
-          echo "SHA:   $GITHUB_SHA"
-          date -u
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
-      - name: Run scheduled_task.py
-        run: python scripts/scheduled_task.py
+      - name: Install deps (none needed)
+        run: python -V
 
-      - name: (Optional) Try send_email.py
-        # 没有配好环境变量就不会发送，只打印提示
+      - name: Send email via Gmail SMTP
         env:
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
-          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: 587
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: |
-          python scripts/send_email.py || true
+          python scripts/send_email.py
