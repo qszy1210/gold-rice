@@ -5,7 +5,7 @@ on:
     branches: ['**']      # 调试期放宽；上线后可收紧到 main
   workflow_dispatch:
   schedule:
-    - cron: '*/30 * * * *' # 每 30 分钟（UTC）演示一次
+    - cron: '0 2 * * *'   # 每天 UTC 02:00（北京时间 10:00）执行一次
 
 jobs:
   update-prices:

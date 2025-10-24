@@ -320,7 +320,7 @@ def generate_html(history_data):
             </div>
             <p style="margin-top: 20px;">
                 数据来源: 上海黄金交易所 (SGE) & 中国鸡蛋产业网<br>
-                自动更新周期: 每30分钟
+                自动更新周期: 每天一次（北京时间上午 10:00）
             </p>
         </footer>
     </div>
