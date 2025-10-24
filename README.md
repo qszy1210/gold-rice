@@ -159,11 +159,39 @@ python3 scripts/send_email.py
 - 自动处理周末和节假日（查找最近 5 天内的数据）
 - 计算黄金/鸡蛋比例，并与历史参考区间对比
 - 输出价格是否处于正常区间
+- **数据持久化**：自动保存价格数据到 `data/price_history.json`
+- **GitHub Actions 优化**：增强的请求头和重试机制，提高在 CI 环境中的成功率
+
+### generate_html.py - HTML 可视化页面生成
+
+这个脚本读取历史价格数据并生成可视化的 HTML 报告页面。
+
+**功能特点：**
+- 📊 交互式价格趋势图表（使用 Chart.js）
+- 📈 黄金/鸡蛋比例趋势分析
+- 📋 最近 30 天的详细数据表格
+- 🎨 响应式设计，支持移动设备
+- 🔄 自动更新，每 30 分钟刷新一次数据
+
+**生成的文件：**
+- `index.html` - 可视化报告页面（可直接通过浏览器打开或部署到 GitHub Pages）
+
+## GitHub Pages 部署
+
+要在线查看价格追踪页面，可以启用 GitHub Pages：
+
+1. 进入仓库的 **Settings → Pages**
+2. 在 **Source** 下选择 **Deploy from a branch**
+3. 选择 **master** 分支和 **/ (root)** 目录
+4. 点击 **Save**
+
+几分钟后，你的价格追踪页面将在 `https://<你的用户名>.github.io/<仓库名>/` 上线。
 
 ## 调整时间与任务
 
 * 如果希望按自己的时区或频率运行，只需修改 `cron` 表达式。例如 `0 13 * * *` 将在每天 13:00 UTC 运行。
 * 你也可以扩展 `scheduled_task.py` 和 `send_email.py`，例如访问 Web API、生成报告等。
+* 数据文件 `data/price_history.json` 会自动保留最近 365 天的数据
 
 ## 参考资料
 

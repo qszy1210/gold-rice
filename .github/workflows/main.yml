@@ -1,4 +1,4 @@
-name: Gmail SMTP Demo
+name: Gold & Egg Price Tracker
 
 on:
   push:
@@ -8,11 +8,15 @@ on:
     - cron: '*/30 * * * *' # 每 30 分钟（UTC）演示一次
 
 jobs:
-  send-mail:
+  update-prices:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 需要写权限以提交数据文件
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史以便提交
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -24,7 +28,24 @@ jobs:
           python -V
           pip install requests beautifulsoup4
 
+      - name: Fetch gold and egg prices
+        run: |
+          python scripts/gold_egg_price.py
+
+      - name: Generate HTML report
+        run: |
+          python scripts/generate_html.py
+
+      - name: Commit and push data
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add data/price_history.json index.html
+          git diff --staged --quiet || git commit -m "🤖 自动更新价格数据 $(date +'%Y-%m-%d %H:%M')"
+          git push
+
       - name: Send email via Gmail SMTP
+        if: always()  # 即使前面步骤失败也发送邮件
         env:
           SMTP_HOST: smtp.gmail.com
           SMTP_PORT: 587

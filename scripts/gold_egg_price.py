@@ -20,6 +20,8 @@ import re
 import sys
 import time
 import random
+import json
+import os
 
 # ============ 公共变量：数据源 URL 模板 ============
 # 上海黄金交易所每日行情数据（Au99.99 为 24K 黄金）
@@ -27,6 +29,10 @@ GOLD_PRICE_URL_TEMPLATE = "https://www.sge.com.cn/sjzx/quotation_daily_new?start
 
 # 鸡蛋价格数据源（中国鸡蛋产业网）
 EGG_PRICE_URL = "https://egg.100ppi.com/kx/"
+
+# 数据存储路径
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+HISTORY_FILE = os.path.join(DATA_DIR, "price_history.json")
 
 def get_gold_price_per_g():
     """从上海黄金交易所抓取 Au99.99（24K 黄金）每克价格（元／克）"""
@@ -159,6 +165,53 @@ def get_rice_price_per_jin():
     """暂留函数：大米价格抓取。当前实现返回 None。后续如找到可靠源可实现解析。"""
     return None
 
+def load_price_history():
+    """加载历史价格数据"""
+    if not os.path.exists(HISTORY_FILE):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        return []
+
+    try:
+        with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[警告] 加载历史数据失败: {e}", file=sys.stderr)
+        return []
+
+def save_price_data(data):
+    """保存价格数据到历史记录"""
+    history = load_price_history()
+
+    # 检查是否已存在当天的数据，如果存在则更新
+    date_str = data['date']
+    existing_index = None
+    for i, record in enumerate(history):
+        if record['date'] == date_str:
+            existing_index = i
+            break
+
+    if existing_index is not None:
+        history[existing_index] = data
+        print(f"[信息] 更新 {date_str} 的数据", file=sys.stderr)
+    else:
+        history.append(data)
+        print(f"[信息] 添加 {date_str} 的新数据", file=sys.stderr)
+
+    # 按日期排序（最新的在前）
+    history.sort(key=lambda x: x['date'], reverse=True)
+
+    # 只保留最近 365 天的数据
+    history = history[:365]
+
+    # 保存到文件
+    os.makedirs(DATA_DIR, exist_ok=True)
+    try:
+        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+        print(f"[信息] 数据已保存到 {HISTORY_FILE}", file=sys.stderr)
+    except Exception as e:
+        print(f"[错误] 保存数据失败: {e}", file=sys.stderr)
+
 def main():
     date_str = datetime.date.today().isoformat()
     error_messages = []
@@ -222,6 +275,19 @@ def main():
         print("\n--- 警告信息 ---")
         for msg in error_messages:
             print(msg)
+
+    # 保存数据到历史记录
+    price_data = {
+        'date': date_str,
+        'timestamp': datetime.datetime.now().isoformat(),
+        'gold_price': gold,
+        'egg_price': egg,
+        'rice_price': rice,
+        'gold_egg_ratio': ratio_gold_egg,
+        'gold_rice_ratio': ratio_gold_rice,
+        'errors': error_messages
+    }
+    save_price_data(price_data)
 
 if __name__ == "__main__":
     main()
