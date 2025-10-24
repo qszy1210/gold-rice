@@ -18,6 +18,8 @@ from bs4 import BeautifulSoup
 import datetime
 import re
 import sys
+import time
+import random
 
 # ============ 公共变量：数据源 URL 模板 ============
 # 上海黄金交易所每日行情数据（Au99.99 为 24K 黄金）
@@ -33,69 +35,125 @@ def get_gold_price_per_g():
         query_date = (datetime.date.today() - datetime.timedelta(days=days_ago)).isoformat()
         url = GOLD_PRICE_URL_TEMPLATE.format(date=query_date)
 
+        # 使用更完整的浏览器请求头，模拟真实浏览器
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Referer": "https://www.sge.com.cn/",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
         }
-        try:
-            resp = requests.get(url, headers=headers, timeout=15)
-            resp.raise_for_status()
-            html = resp.text
-            soup = BeautifulSoup(html, "html.parser")
 
-            # 查找表格中的 Au99.99 行（24K 黄金）
-            # 在 HTML 中，数据在 <table class="daily_new_table"> 的 <tbody> 中
-            table = soup.find("table", class_="daily_new_table")
-            if not table:
-                continue
+        # 最多重试3次
+        for retry in range(3):
+            try:
+                # 添加随机延迟，避免触发反爬虫（1-3秒）
+                if retry > 0:
+                    time.sleep(random.uniform(1, 3))
 
-            tbody = table.find("tbody")
-            if not tbody:
-                continue
+                resp = requests.get(url, headers=headers, timeout=20)
+                resp.raise_for_status()
+                html = resp.text
 
-            # 查找包含 Au99.99 的行（支持 Au99.99, iAu99.99 等变体）
-            rows = tbody.find_all("tr")
-            for row in rows:
-                cells = row.find_all("td")
-                if len(cells) >= 6:
-                    # 第二列是合约代码
-                    contract = cells[1].get_text(strip=True)
-                    # 部分匹配：只要包含 "Au99.99" 就认为是目标合约
-                    if "Au99.99" in contract:
-                        # 第六列是收盘价
-                        closing_price_text = cells[5].get_text(strip=True)
-                        # 移除可能的千分位逗号
-                        closing_price_text = closing_price_text.replace(",", "")
-                        if closing_price_text and closing_price_text != "-":
-                            price = float(closing_price_text)
-                            print(f"[调试] 使用 {query_date} 的黄金价格数据，合约: {contract}", file=sys.stderr)
-                            return price
-        except Exception as e:
-            # 如果某天数据获取失败，尝试前一天
-            continue
+                # 调试：输出部分 HTML 内容以便排查问题
+                if "daily_new_table" not in html:
+                    print(f"[调试] {query_date} 页面中未找到 daily_new_table，HTML 长度: {len(html)}", file=sys.stderr)
+                    if retry == 2:  # 最后一次重试时输出前500字符
+                        print(f"[调试] HTML 预览: {html[:500]}", file=sys.stderr)
+                    continue
 
-    raise ValueError("无法在最近5天内找到 Au99.99 的收盘价（可能是节假日或周末）")
+                soup = BeautifulSoup(html, "html.parser")
+
+                # 查找表格中的 Au99.99 行（24K 黄金）
+                # 在 HTML 中，数据在 <table class="daily_new_table"> 的 <tbody> 中
+                table = soup.find("table", class_="daily_new_table")
+                if not table:
+                    print(f"[调试] {query_date} 未找到表格 (重试 {retry+1}/3)", file=sys.stderr)
+                    continue
+
+                tbody = table.find("tbody")
+                if not tbody:
+                    print(f"[调试] {query_date} 未找到 tbody (重试 {retry+1}/3)", file=sys.stderr)
+                    continue
+
+                # 查找包含 Au99.99 的行（支持 Au99.99, iAu99.99 等变体）
+                rows = tbody.find_all("tr")
+                for row in rows:
+                    cells = row.find_all("td")
+                    if len(cells) >= 6:
+                        # 第二列是合约代码
+                        contract = cells[1].get_text(strip=True)
+                        # 部分匹配：只要包含 "Au99.99" 就认为是目标合约
+                        if "Au99.99" in contract:
+                            # 第六列是收盘价
+                            closing_price_text = cells[5].get_text(strip=True)
+                            # 移除可能的千分位逗号
+                            closing_price_text = closing_price_text.replace(",", "")
+                            if closing_price_text and closing_price_text != "-":
+                                price = float(closing_price_text)
+                                print(f"[调试] 使用 {query_date} 的黄金价格数据，合约: {contract}", file=sys.stderr)
+                                return price
+
+                # 如果找到表格但没有 Au99.99 数据，尝试下一天
+                print(f"[调试] {query_date} 表格中未找到 Au99.99 数据", file=sys.stderr)
+                break
+
+            except requests.exceptions.RequestException as e:
+                print(f"[调试] {query_date} 请求失败 (重试 {retry+1}/3): {e}", file=sys.stderr)
+                if retry == 2:  # 最后一次重试失败
+                    continue
+            except Exception as e:
+                print(f"[调试] {query_date} 解析失败: {e}", file=sys.stderr)
+                break
+
+    raise ValueError("无法在页面中找到 Au99.99 的收盘价")
 
 def get_egg_price_per_jin():
     """从"鸡蛋产业网–价格快讯"抓取鸡蛋参考价，然后转换为元／斤"""
     url = EGG_PRICE_URL
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Referer": "https://egg.100ppi.com/",
     }
-    resp = requests.get(url, headers=headers, timeout=15)
-    resp.raise_for_status()
-    html = resp.text
-    soup = BeautifulSoup(html, "html.parser")
-    text = soup.get_text()
-    # 查找 “鸡蛋参考价为X.XX” 或 “鸡蛋为X.XX”
-    m = re.search(r"鸡蛋参考价为\s*([\d]+\.\d+)", text)
-    if not m:
-        # 尝试另一种表达
-        m = re.search(r"鸡蛋为\s*([\d]+\.\d+)", text)
-    if not m:
-        raise ValueError("无法在页面中找到鸡蛋参考价")
-    price_per_kg = float(m.group(1))
-    price_per_jin = price_per_kg / 2.0
-    return price_per_jin
+
+    # 最多重试3次
+    for retry in range(3):
+        try:
+            if retry > 0:
+                time.sleep(random.uniform(1, 2))
+
+            resp = requests.get(url, headers=headers, timeout=15)
+            resp.raise_for_status()
+            html = resp.text
+            soup = BeautifulSoup(html, "html.parser")
+            text = soup.get_text()
+
+            # 查找 "鸡蛋参考价为X.XX" 或 "鸡蛋为X.XX"
+            m = re.search(r"鸡蛋参考价为\s*([\d]+\.\d+)", text)
+            if not m:
+                # 尝试另一种表达
+                m = re.search(r"鸡蛋为\s*([\d]+\.\d+)", text)
+            if not m:
+                print(f"[调试] 鸡蛋价格未找到 (重试 {retry+1}/3)", file=sys.stderr)
+                continue
+
+            price_per_kg = float(m.group(1))
+            price_per_jin = price_per_kg / 2.0
+            return price_per_jin
+
+        except requests.exceptions.RequestException as e:
+            print(f"[调试] 鸡蛋价格请求失败 (重试 {retry+1}/3): {e}", file=sys.stderr)
+            if retry == 2:
+                raise ValueError("无法在页面中找到鸡蛋参考价")
+
+    raise ValueError("无法在页面中找到鸡蛋参考价")
 
 def get_rice_price_per_jin():
     """暂留函数：大米价格抓取。当前实现返回 None。后续如找到可靠源可实现解析。"""
@@ -103,16 +161,20 @@ def get_rice_price_per_jin():
 
 def main():
     date_str = datetime.date.today().isoformat()
+    error_messages = []
+
     try:
         gold = get_gold_price_per_g()
     except Exception as e:
         print(f"获取黄金价格失败: {e}", file=sys.stderr)
+        error_messages.append(f"获取黄金价格失败: {e}")
         gold = None
 
     try:
         egg = get_egg_price_per_jin()
     except Exception as e:
         print(f"获取鸡蛋价格失败: {e}", file=sys.stderr)
+        error_messages.append(f"获取鸡蛋价格失败: {e}")
         egg = None
 
     try:
@@ -154,6 +216,12 @@ def main():
         print(f"黄金／大米 比例: {ratio_gold_rice:.1f} – {status_rice} 历史参考区间 {threshold_gold_rice[0]:.1f}-{threshold_gold_rice[1]:.1f}")
     else:
         print("黄金／大米 比例: N/A")
+
+    # 如果有错误信息，输出到 stderr 和 stdout
+    if error_messages:
+        print("\n--- 警告信息 ---")
+        for msg in error_messages:
+            print(msg)
 
 if __name__ == "__main__":
     main()
