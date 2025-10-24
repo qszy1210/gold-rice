@@ -19,29 +19,58 @@ import datetime
 import re
 import sys
 
+# ============ 公共变量：数据源 URL 模板 ============
+# 上海黄金交易所每日行情数据（Au99.99 为 24K 黄金）
+GOLD_PRICE_URL_TEMPLATE = "https://www.sge.com.cn/sjzx/quotation_daily_new?start_date={date}&end_date={date}"
+
+# 鸡蛋价格数据源（中国鸡蛋产业网）
+EGG_PRICE_URL = "https://egg.100ppi.com/kx/"
+
 def get_gold_price_per_g():
-    """从 Exchange-Rates.org 抓取中国 24K 黄金每克价格（元／克）"""
-    url = "https://www.exchange-rates.org/precious-metals/gold-price/china"
+    """从上海黄金交易所抓取 Au99.99（24K 黄金）每克价格（元／克）"""
+    # 获取今天的日期
+    today = datetime.date.today().isoformat()
+    url = GOLD_PRICE_URL_TEMPLATE.format(date=today)
+
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     resp = requests.get(url, headers=headers, timeout=15)
     resp.raise_for_status()
     html = resp.text
     soup = BeautifulSoup(html, "html.parser")
-    # 查找 “24K Gold Price per Gram” 文本所在行
-    # 例如页面里有表格：24K Gold Price per Gram | ¥928.77
-    text = soup.get_text()
-    m = re.search(r"24K Gold Price per Gram\s*¥\s*([\d,]+\.\d+)", text)
-    if not m:
-        raise ValueError("无法在页面中找到 24K 黄金每克价格")
-    price_str = m.group(1).replace(",", "")
-    price = float(price_str)
-    return price
+
+    # 查找表格中的 Au99.99 行（24K 黄金）
+    # 在 HTML 中，数据在 <table class="daily_new_table"> 的 <tbody> 中
+    table = soup.find("table", class_="daily_new_table")
+    if not table:
+        raise ValueError("无法在页面中找到行情数据表格")
+
+    tbody = table.find("tbody")
+    if not tbody:
+        raise ValueError("无法在表格中找到数据")
+
+    # 查找包含 Au99.99 的行
+    rows = tbody.find_all("tr")
+    for row in rows:
+        cells = row.find_all("td")
+        if len(cells) >= 6:
+            # 第二列是合约代码
+            contract = cells[1].get_text(strip=True)
+            if contract == "Au99.99":
+                # 第六列是收盘价
+                closing_price_text = cells[5].get_text(strip=True)
+                # 移除可能的千分位逗号
+                closing_price_text = closing_price_text.replace(",", "")
+                if closing_price_text and closing_price_text != "-":
+                    price = float(closing_price_text)
+                    return price
+
+    raise ValueError("无法在页面中找到 Au99.99 的收盘价")
 
 def get_egg_price_per_jin():
-    """从“鸡蛋产业网–价格快讯”抓取鸡蛋参考价，然后转换为元／斤"""
-    url = "https://egg.100ppi.com/kx/"
+    """从"鸡蛋产业网–价格快讯"抓取鸡蛋参考价，然后转换为元／斤"""
+    url = EGG_PRICE_URL
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
     }
