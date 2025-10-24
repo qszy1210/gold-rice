@@ -4,6 +4,7 @@
 
 * 一个 Python 脚本，用来演示如何读取环境变量并发送电子邮件（代码仅提供框架，不包含任何实际的邮件内容和帐户信息）。
 * 一个简单的 Python 脚本，用于定时打印当前日期和时间。
+* 一个黄金和鸡蛋价格抓取脚本（`gold_egg_price.py`），用于从公开网页抓取黄金和鸡蛋价格并计算比例。
 * 一个工作流文件（`.github/workflows/main.yml`），展示如何在每次推送时运行工作流，以及如何使用 [GitHub Actions 的 `schedule` 事件]【569932550132912†L1626-L1649】 根据 cron 表达式定时触发工作流。
 
 > **注意：** 为了保护隐私，本示例中不会提供任何具体的邮箱地址、用户名或密码等信息。发送邮件所需的所有敏感信息都应通过 GitHub 的 Secrets 管理功能注入。有关如何在工作流中使用 Secrets，可以参考 GitHub 官方文档【732225639440178†L488-L520】。
@@ -14,14 +15,64 @@
 github-actions-demo/
 ├── .github/
 │   └── workflows/
-│       └── main.yml       # GitHub Actions 工作流定义
+│       └── main.yml          # GitHub Actions 工作流定义
 ├── scripts/
-│   ├── send_email.py      # 演示邮件发送的 Python 脚本
-│   └── scheduled_task.py  # 定时任务示例脚本
-└── README.md              # 项目说明（本文档）
+│   ├── send_email.py         # 演示邮件发送的 Python 脚本
+│   ├── scheduled_task.py     # 定时任务示例脚本
+│   └── gold_egg_price.py     # 黄金和鸡蛋价格抓取脚本
+├── requirements.txt          # Python 依赖包列表
+├── .gitignore               # Git 忽略文件配置
+└── README.md                # 项目说明（本文档）
 ```
 
 ## 使用说明
+
+### 本地运行
+
+#### 1. 安装依赖
+
+本项目使用 Python 3，需要安装 `requests` 和 `beautifulsoup4` 依赖包。
+
+**方式一：使用虚拟环境（推荐）**
+
+```bash
+# 创建虚拟环境
+python3 -m venv venv
+
+# 激活虚拟环境
+# macOS/Linux:
+source venv/bin/activate
+# Windows:
+# venv\Scripts\activate
+
+# 安装依赖
+pip install -r requirements.txt
+```
+
+**方式二：全局安装**
+
+```bash
+pip3 install requests beautifulsoup4
+```
+
+#### 2. 运行脚本
+
+安装依赖后，可以运行各个脚本：
+
+```bash
+# 运行黄金和鸡蛋价格抓取脚本
+python3 scripts/gold_egg_price.py
+
+# 运行定时任务示例
+python3 scripts/scheduled_task.py
+
+# 运行邮件发送示例（需要配置环境变量）
+python3 scripts/send_email.py
+```
+
+**注意：** 如果使用虚拟环境，运行脚本前需要先激活虚拟环境。
+
+### GitHub Actions 自动化
 
 1. **克隆或创建仓库：** 将该目录结构放置在你自己的 GitHub 仓库中（例如 `github-actions-demo`）。
 2. **准备 Secrets：**
@@ -83,6 +134,31 @@ github-actions-demo/
            run: python scripts/send_email.py
    ```
    通过 `env` 字段，工作流将 Secrets 注入到环境变量中，供 Python 脚本访问。这符合官方文档中将 Secrets 作为输入或环境变量的做法【732225639440178†L488-L520】。
+
+## 脚本说明
+
+### gold_egg_price.py - 黄金和鸡蛋价格抓取
+
+这个脚本从公开网页抓取黄金和鸡蛋价格，并计算它们的比例关系。
+
+**数据源：**
+- 黄金价格：上海黄金交易所（Au99.99，24K 黄金）
+- 鸡蛋价格：中国鸡蛋产业网
+
+**输出示例：**
+```
+日期: 2025-10-24
+黄金价格: 600.50 元／克
+鸡蛋价格: 5.20 元／斤
+黄金／鸡蛋 比例: 115.5 – 处于 历史参考区间 80.0-150.0
+大米价格: N/A
+黄金／大米 比例: N/A
+```
+
+**功能特点：**
+- 自动处理周末和节假日（查找最近 5 天内的数据）
+- 计算黄金/鸡蛋比例，并与历史参考区间对比
+- 输出价格是否处于正常区间
 
 ## 调整时间与任务
 

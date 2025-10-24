@@ -28,45 +28,52 @@ EGG_PRICE_URL = "https://egg.100ppi.com/kx/"
 
 def get_gold_price_per_g():
     """从上海黄金交易所抓取 Au99.99（24K 黄金）每克价格（元／克）"""
-    # 获取今天的日期
-    today = datetime.date.today().isoformat()
-    url = GOLD_PRICE_URL_TEMPLATE.format(date=today)
+    # 尝试最近5天的数据（考虑周末和节假日）
+    for days_ago in range(5):
+        query_date = (datetime.date.today() - datetime.timedelta(days=days_ago)).isoformat()
+        url = GOLD_PRICE_URL_TEMPLATE.format(date=query_date)
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    resp = requests.get(url, headers=headers, timeout=15)
-    resp.raise_for_status()
-    html = resp.text
-    soup = BeautifulSoup(html, "html.parser")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        try:
+            resp = requests.get(url, headers=headers, timeout=15)
+            resp.raise_for_status()
+            html = resp.text
+            soup = BeautifulSoup(html, "html.parser")
 
-    # 查找表格中的 Au99.99 行（24K 黄金）
-    # 在 HTML 中，数据在 <table class="daily_new_table"> 的 <tbody> 中
-    table = soup.find("table", class_="daily_new_table")
-    if not table:
-        raise ValueError("无法在页面中找到行情数据表格")
+            # 查找表格中的 Au99.99 行（24K 黄金）
+            # 在 HTML 中，数据在 <table class="daily_new_table"> 的 <tbody> 中
+            table = soup.find("table", class_="daily_new_table")
+            if not table:
+                continue
 
-    tbody = table.find("tbody")
-    if not tbody:
-        raise ValueError("无法在表格中找到数据")
+            tbody = table.find("tbody")
+            if not tbody:
+                continue
 
-    # 查找包含 Au99.99 的行
-    rows = tbody.find_all("tr")
-    for row in rows:
-        cells = row.find_all("td")
-        if len(cells) >= 6:
-            # 第二列是合约代码
-            contract = cells[1].get_text(strip=True)
-            if contract == "Au99.99":
-                # 第六列是收盘价
-                closing_price_text = cells[5].get_text(strip=True)
-                # 移除可能的千分位逗号
-                closing_price_text = closing_price_text.replace(",", "")
-                if closing_price_text and closing_price_text != "-":
-                    price = float(closing_price_text)
-                    return price
+            # 查找包含 Au99.99 的行（支持 Au99.99, iAu99.99 等变体）
+            rows = tbody.find_all("tr")
+            for row in rows:
+                cells = row.find_all("td")
+                if len(cells) >= 6:
+                    # 第二列是合约代码
+                    contract = cells[1].get_text(strip=True)
+                    # 部分匹配：只要包含 "Au99.99" 就认为是目标合约
+                    if "Au99.99" in contract:
+                        # 第六列是收盘价
+                        closing_price_text = cells[5].get_text(strip=True)
+                        # 移除可能的千分位逗号
+                        closing_price_text = closing_price_text.replace(",", "")
+                        if closing_price_text and closing_price_text != "-":
+                            price = float(closing_price_text)
+                            print(f"[调试] 使用 {query_date} 的黄金价格数据，合约: {contract}", file=sys.stderr)
+                            return price
+        except Exception as e:
+            # 如果某天数据获取失败，尝试前一天
+            continue
 
-    raise ValueError("无法在页面中找到 Au99.99 的收盘价")
+    raise ValueError("无法在最近5天内找到 Au99.99 的收盘价（可能是节假日或周末）")
 
 def get_egg_price_per_jin():
     """从"鸡蛋产业网–价格快讯"抓取鸡蛋参考价，然后转换为元／斤"""
