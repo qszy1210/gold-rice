@@ -19,8 +19,10 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install deps (none needed)
-        run: python -V
+      - name: Install dependencies
+        run: |
+          python -V
+          pip install requests beautifulsoup4
 
       - name: Send email via Gmail SMTP
         env:

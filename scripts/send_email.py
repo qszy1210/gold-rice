@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import os, smtplib, ssl
+import os, smtplib, ssl, subprocess, sys
 from email.mime.text import MIMEText
 from email.header import Header
 
@@ -20,8 +20,32 @@ def main():
         print(f"[send_email] 缺少必需的环境变量：{', '.join(missing)}，跳过发送。")
         return
 
-    subject = "GitHub Actions 发信测试"
-    body = "这是一封来自 GitHub Actions 的测试邮件。"
+    # 执行 gold_egg_price.py 并获取输出
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    gold_egg_script = os.path.join(script_dir, "gold_egg_price.py")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, gold_egg_script],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode == 0:
+            body = result.stdout
+            if result.stderr:
+                body += "\n\n--- 警告信息 ---\n" + result.stderr
+        else:
+            body = f"执行 gold_egg_price.py 时出错（返回码: {result.returncode}）\n\n"
+            body += "--- 标准输出 ---\n" + result.stdout
+            body += "\n--- 错误输出 ---\n" + result.stderr
+    except subprocess.TimeoutExpired:
+        body = "执行 gold_egg_price.py 超时（60秒）"
+    except Exception as e:
+        body = f"执行 gold_egg_price.py 时发生异常: {str(e)}"
+
+    subject = "黄金鸡蛋价格比例报告"
 
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = Header(subject, "utf-8")
