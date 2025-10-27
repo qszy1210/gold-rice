@@ -45,7 +45,8 @@ jobs:
           git push
 
       - name: Send email via Gmail SMTP
-        if: always()  # 即使前面步骤失败也发送邮件
+        # 只在定时任务或手动触发时发送邮件，推送代码时不发送
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           SMTP_HOST: smtp.gmail.com
           SMTP_PORT: 587
