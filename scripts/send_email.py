@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import os, smtplib, ssl, subprocess, sys
+import os, smtplib, ssl, subprocess, sys, re
 from email.mime.text import MIMEText
 from email.header import Header
 
@@ -9,6 +9,19 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))  # 587(TLS) / 465(SSL)
 USERNAME  = os.getenv("GMAIL_USERNAME")         # demo@gmail.com
 APP_PASS  = os.getenv("GMAIL_APP_PASSWORD")     # 16 位 App Password
 EMAIL_TO  = os.getenv("EMAIL_TO")               # 收件人
+
+# 黄金价格预警阈值
+GOLD_PRICE_ALERT_THRESHOLD = 960.0
+
+def extract_gold_price(output_text):
+    """从输出中提取黄金价格"""
+    match = re.search(r"黄金价格:\s*([\d]+\.?\d*)\s*元／克", output_text)
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            return None
+    return None
 
 def main():
     missing = [k for k,v in {
@@ -45,7 +58,31 @@ def main():
     except Exception as e:
         body = f"执行 gold_egg_price.py 时发生异常: {str(e)}"
 
-    subject = "黄金鸡蛋价格比例报告"
+    # 检查黄金价格是否超过阈值
+    gold_price = extract_gold_price(body)
+    is_high_price = gold_price is not None and gold_price > GOLD_PRICE_ALERT_THRESHOLD
+
+    # 根据价格设置邮件主题
+    if is_high_price:
+        subject = f"⚠️ 高价预警 ⚠️ 黄金价格 {gold_price:.2f} 元/克 - 黄金鸡蛋价格比例报告"
+    else:
+        subject = "黄金鸡蛋价格比例报告"
+
+    # 如果价格超过阈值，在邮件正文开头添加醒目提醒
+    if is_high_price:
+        alert_header = f"""
+{'='*70}
+⚠️⚠️⚠️  黄金价格高价预警  ⚠️⚠️⚠️
+
+当前黄金价格: {gold_price:.2f} 元/克
+预警阈值: {GOLD_PRICE_ALERT_THRESHOLD:.2f} 元/克
+超出阈值: {gold_price - GOLD_PRICE_ALERT_THRESHOLD:.2f} 元/克
+
+建议关注价格波动，谨慎做出投资决策！
+{'='*70}
+
+"""
+        body = alert_header + body
 
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = Header(subject, "utf-8")
