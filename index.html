@@ -195,7 +195,7 @@
             <div class="stat-card">
                 <div class="stat-label">黄金价格 Gold Price</div>
                 <div class="stat-value">
-                    935.6
+                    930.79
                     <span class="stat-unit">元/克</span>
                 </div>
             </div>
@@ -203,7 +203,7 @@
             <div class="stat-card">
                 <div class="stat-label">鸡蛋价格 Egg Price</div>
                 <div class="stat-value">
-                    3.05
+                    3.1
                     <span class="stat-unit">元/斤</span>
                 </div>
             </div>
@@ -211,7 +211,7 @@
             <div class="stat-card">
                 <div class="stat-label">黄金/鸡蛋比例 Gold/Egg Ratio</div>
                 <div class="stat-value warning">
-                    306.8
+                    300.3
                 </div>
             </div>
         </div>
@@ -240,6 +240,13 @@
                 </thead>
                 <tbody>
                     
+                    <tr>
+                        <td>2025-10-28</td>
+                        <td>930.79</td>
+                        <td>3.10</td>
+                        <td>300.3</td>
+                        <td><span class="success-badge">正常</span></td>
+                    </tr>
                     <tr>
                         <td>2025-10-27</td>
                         <td>935.60</td>
@@ -274,7 +281,7 @@
 
         <footer>
             <div class="update-time">
-                最后更新: 2025-10-27T06:58:43.508781
+                最后更新: 2025-10-28T03:04:00.335803
             </div>
             <p style="margin-top: 20px;">
                 数据来源: 上海黄金交易所 (SGE) & 中国鸡蛋产业网<br>
@@ -289,11 +296,11 @@
         const priceChart = new Chart(priceCtx, {
             type: 'line',
             data: {
-                labels: ["2025-10-24", "2025-10-25", "2025-10-26", "2025-10-27"],
+                labels: ["2025-10-24", "2025-10-25", "2025-10-26", "2025-10-27", "2025-10-28"],
                 datasets: [
                     {
                         label: '黄金价格 (元/克)',
-                        data: [935.6, 935.6, 935.6, 935.6],
+                        data: [935.6, 935.6, 935.6, 935.6, 930.79],
                         borderColor: '#f39c12',
                         backgroundColor: 'rgba(243, 156, 18, 0.1)',
                         yAxisID: 'y',
@@ -302,7 +309,7 @@
                     },
                     {
                         label: '鸡蛋价格 (元/斤)',
-                        data: [3.035, 3.05, 3.05, 3.05],
+                        data: [3.035, 3.05, 3.05, 3.05, 3.1],
                         borderColor: '#3498db',
                         backgroundColor: 'rgba(52, 152, 219, 0.1)',
                         yAxisID: 'y1',
@@ -355,11 +362,11 @@
         const ratioChart = new Chart(ratioCtx, {
             type: 'line',
             data: {
-                labels: ["2025-10-24", "2025-10-25", "2025-10-26", "2025-10-27"],
+                labels: ["2025-10-24", "2025-10-25", "2025-10-26", "2025-10-27", "2025-10-28"],
                 datasets: [
                     {
                         label: '黄金/鸡蛋比例',
-                        data: [308.2701812191104, 306.75409836065575, 306.75409836065575, 306.75409836065575],
+                        data: [308.2701812191104, 306.75409836065575, 306.75409836065575, 306.75409836065575, 300.2548387096774],
                         borderColor: '#9b59b6',
                         backgroundColor: 'rgba(155, 89, 182, 0.1)',
                         tension: 0.4,
@@ -367,7 +374,7 @@
                     },
                     {
                         label: '参考上限 (150)',
-                        data: Array(4).fill(150),
+                        data: Array(5).fill(150),
                         borderColor: '#e74c3c',
                         borderDash: [5, 5],
                         borderWidth: 2,
@@ -376,7 +383,7 @@
                     },
                     {
                         label: '参考下限 (80)',
-                        data: Array(4).fill(80),
+                        data: Array(5).fill(80),
                         borderColor: '#27ae60',
                         borderDash: [5, 5],
                         borderWidth: 2,
