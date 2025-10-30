@@ -9,6 +9,8 @@ on:
 
 jobs:
   update-prices:
+    # 推送触发时仅在提交消息包含 run 时才执行，其余触发保持
+    if: ${{ github.event_name != 'push' || contains(join(github.event.commits.*.message, ' '), 'run') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write  # 需要写权限以提交数据文件
