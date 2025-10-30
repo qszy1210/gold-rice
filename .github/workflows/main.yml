@@ -52,6 +52,6 @@ jobs:
           SMTP_PORT: 587
           GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO != '' && format('your-email@example.com,{0}', secrets.EMAIL_TO) || 'your-email@example.com' }}
         run: |
           python scripts/send_email.py

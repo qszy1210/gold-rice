@@ -8,7 +8,7 @@ SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))  # 587(TLS) / 465(SSL)
 USERNAME  = os.getenv("GMAIL_USERNAME")         # demo@gmail.com
 APP_PASS  = os.getenv("GMAIL_APP_PASSWORD")     # 16 位 App Password
-EMAIL_TO  = os.getenv("EMAIL_TO")               # 收件人
+EMAIL_TO  = os.getenv("EMAIL_TO")               # 收件人（可逗号分隔多个地址）
 
 # 黄金价格预警阈值
 GOLD_PRICE_ALERT_THRESHOLD = 960.0
@@ -23,6 +23,13 @@ def extract_gold_price(output_text):
             return None
     return None
 
+def parse_recipients(raw):
+    """将逗号或分号分隔的地址解析为列表"""
+    if not raw:
+        return []
+    parts = re.split(r"[;,]", raw)
+    return [p.strip() for p in parts if p and p.strip()]
+
 def main():
     missing = [k for k,v in {
         "GMAIL_USERNAME": USERNAME,
@@ -31,6 +38,11 @@ def main():
     }.items() if not v]
     if missing:
         print(f"[send_email] 缺少必需的环境变量：{', '.join(missing)}，跳过发送。")
+        return
+
+    recipients = parse_recipients(EMAIL_TO)
+    if not recipients:
+        print("[send_email] 未解析出有效的收件人地址，跳过发送。")
         return
 
     # 执行 gold_egg_price.py 并获取输出
@@ -87,19 +99,19 @@ def main():
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = Header(subject, "utf-8")
     msg["From"] = USERNAME
-    msg["To"] = EMAIL_TO
+    msg["To"] = ", ".join(recipients)
 
     if SMTP_PORT == 465:
         context = ssl.create_default_context()
         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context) as server:
             server.login(USERNAME, APP_PASS)
-            server.sendmail(USERNAME, [EMAIL_TO], msg.as_string())
+            server.sendmail(USERNAME, recipients, msg.as_string())
     else:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.ehlo()
             server.starttls(context=ssl.create_default_context())
             server.login(USERNAME, APP_PASS)
-            server.sendmail(USERNAME, [EMAIL_TO], msg.as_string())
+            server.sendmail(USERNAME, recipients, msg.as_string())
 
     print("[send_email] 发送成功。")
 
