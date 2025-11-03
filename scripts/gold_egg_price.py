@@ -212,6 +212,72 @@ def save_price_data(data):
     except Exception as e:
         print(f"[错误] 保存数据失败: {e}", file=sys.stderr)
 
+def generate_history_statistics():
+    """生成最近30天的历史统计表格"""
+    history = load_price_history()
+    if not history:
+        return "\n--- 最近30天历史统计 ---\n暂无历史数据\n"
+
+    # 获取最近30天的数据
+    recent_data = history[:30]
+
+    # 表格头部
+    table = []
+    table.append("\n" + "="*90)
+    table.append("最近30天历史统计")
+    table.append("="*90)
+    table.append(f"{'日期':<12} {'黄金价格':<12} {'鸡蛋价格':<12} {'金蛋比例':<12} {'状态':<10}")
+    table.append("-"*90)
+
+    # 阈值区间
+    threshold_low = 80.0
+    threshold_high = 150.0
+
+    for record in recent_data:
+        date = record['date']
+        gold_price = record.get('gold_price')
+        egg_price = record.get('egg_price')
+        ratio = record.get('gold_egg_ratio')
+        errors = record.get('errors', [])
+
+        # 格式化价格
+        if gold_price is not None:
+            # 如果价格大于950，添加特殊标记
+            if gold_price > 950:
+                gold_str = f"**{gold_price:.2f}**"
+            else:
+                gold_str = f"{gold_price:.2f}"
+        else:
+            gold_str = "N/A"
+
+        if egg_price is not None:
+            egg_str = f"{egg_price:.2f}"
+        else:
+            egg_str = "N/A"
+
+        if ratio is not None:
+            ratio_str = f"{ratio:.1f}"
+            # 判断状态
+            if ratio < threshold_low:
+                status = "偏低"
+            elif ratio > threshold_high:
+                status = "偏高"
+            else:
+                status = "正常"
+        else:
+            ratio_str = "N/A"
+            status = "N/A"
+
+        # 构建行
+        row = f"{date:<12} {gold_str:<12} {egg_str:<12} {ratio_str:<12} {status:<10}"
+        table.append(row)
+
+    table.append("-"*90)
+    table.append("说明：**数字** 表示黄金价格 > 950元/克；比例正常区间: 80.0-150.0")
+    table.append("="*90)
+
+    return "\n".join(table)
+
 def main():
     date_str = datetime.date.today().isoformat()
     error_messages = []
@@ -288,6 +354,9 @@ def main():
         'errors': error_messages
     }
     save_price_data(price_data)
+
+    # 输出最近30天历史统计
+    print(generate_history_statistics())
 
 if __name__ == "__main__":
     main()
