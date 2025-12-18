@@ -1,5 +1,15 @@
 [
   {
+    "date": "2025-12-18",
+    "timestamp": "2025-12-18T03:17:10.917276",
+    "gold_price": 972.71,
+    "egg_price": 3.29,
+    "rice_price": null,
+    "gold_egg_ratio": 295.6565349544073,
+    "gold_rice_ratio": null,
+    "errors": []
+  },
+  {
     "date": "2025-12-17",
     "timestamp": "2025-12-17T03:16:34.965118",
     "gold_price": 964.89,
