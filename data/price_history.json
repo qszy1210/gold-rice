@@ -1,5 +1,15 @@
 [
   {
+    "date": "2026-01-18",
+    "timestamp": "2026-01-18T03:41:49.154958",
+    "gold_price": 1032.63,
+    "egg_price": 3.785,
+    "rice_price": null,
+    "gold_egg_ratio": 272.82166446499343,
+    "gold_rice_ratio": null,
+    "errors": []
+  },
+  {
     "date": "2026-01-17",
     "timestamp": "2026-01-17T03:18:38.227722",
     "gold_price": 1032.63,
