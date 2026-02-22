@@ -1,5 +1,17 @@
 [
   {
+    "date": "2026-02-22",
+    "timestamp": "2026-02-22T04:12:16.620086",
+    "gold_price": null,
+    "egg_price": 3.5,
+    "rice_price": null,
+    "gold_egg_ratio": null,
+    "gold_rice_ratio": null,
+    "errors": [
+      "获取黄金价格失败: 无法在页面中找到 Au99.99 的收盘价"
+    ]
+  },
+  {
     "date": "2026-02-21",
     "timestamp": "2026-02-21T04:02:16.914957",
     "gold_price": null,
