@@ -7,18 +7,24 @@ on:
   schedule:
     - cron: '0 2 * * *'   # 每天 UTC 02:00（北京时间 10:00）执行一次
 
+# ── 通知通道开关 ──
+# NOTIFY_CHANNEL 可选值: email | feishu | all
+# 通过 Repository Variables 设置（Settings → Secrets and variables → Actions → Variables）
+# 默认值为 feishu，即只发送飞书通知
+
 jobs:
   update-prices:
-    # 推送触发时仅在提交消息包含 run 时才执行，其余触发保持
     if: ${{ github.event_name != 'push' || contains(join(github.event.commits.*.message, ' '), 'run') }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 需要写权限以提交数据文件
+      contents: write
+    env:
+      NOTIFY_CHANNEL: ${{ vars.NOTIFY_CHANNEL || 'feishu' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 获取完整历史以便提交
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -43,12 +49,31 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add data/price_history.json index.html
-          git diff --staged --quiet || git commit -m "🤖 自动更新价格数据 $(date +'%Y-%m-%d %H:%M')"
+          git diff --staged --quiet || git commit -m "auto update price data $(date +'%Y-%m-%d %H:%M')"
           git push
 
+      # ── 飞书通知（优先 Webhook，备选 App API）──
+      - name: Send Feishu notification
+        if: >-
+          (env.NOTIFY_CHANNEL == 'feishu' || env.NOTIFY_CHANNEL == 'all') &&
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+           (github.event_name == 'push' && contains(join(github.event.commits.*.message, ' '), 'run')))
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_RECEIVE_ID: ${{ secrets.FEISHU_RECEIVE_ID }}
+          FEISHU_RECEIVE_ID_TYPE: ${{ vars.FEISHU_RECEIVE_ID_TYPE || 'chat_id' }}
+        run: |
+          python scripts/send_feishu.py
+
+      # ── 邮件通知 ──
       - name: Send email via Gmail SMTP
-        # 定时、手动触发或推送日志包含 run 时发送邮件
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(join(github.event.commits.*.message, ' '), 'run'))
+        if: >-
+          (env.NOTIFY_CHANNEL == 'email' || env.NOTIFY_CHANNEL == 'all') &&
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+           (github.event_name == 'push' && contains(join(github.event.commits.*.message, ' '), 'run')))
         env:
           SMTP_HOST: smtp.gmail.com
           SMTP_PORT: 587
