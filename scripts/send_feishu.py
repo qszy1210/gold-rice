@@ -4,16 +4,15 @@
 send_feishu.py
 ==============
 通过飞书发送黄金鸡蛋价格比例报告。
+直接读取 price_history.json 构建结构化消息，排版适配飞书客户端。
 
 支持两种模式（优先使用 Webhook）：
-  1. Webhook 模式：只需 FEISHU_WEBHOOK_URL，最简单
+  1. Webhook 模式：只需 FEISHU_WEBHOOK_URL
   2. App API 模式：需要 FEISHU_APP_ID + FEISHU_APP_SECRET + FEISHU_RECEIVE_ID
 """
 
 import os
 import sys
-import subprocess
-import re
 import json
 import time
 import hmac
@@ -30,66 +29,114 @@ FEISHU_RECEIVE_ID = os.getenv("FEISHU_RECEIVE_ID")
 FEISHU_RECEIVE_ID_TYPE = os.getenv("FEISHU_RECEIVE_ID_TYPE", "chat_id")
 
 GOLD_PRICE_ALERT_THRESHOLD = 960.0
+RATIO_LOW = 80.0
+RATIO_HIGH = 150.0
+TREND_DAYS = 7
 
 TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
 SEND_MSG_URL = "https://open.feishu.cn/open-apis/im/v1/messages"
 
-
-def get_report_body():
-    """执行 gold_egg_price.py 并返回输出文本"""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    gold_egg_script = os.path.join(script_dir, "gold_egg_price.py")
-
-    try:
-        result = subprocess.run(
-            [sys.executable, gold_egg_script],
-            capture_output=True, text=True, timeout=60,
-        )
-        if result.returncode == 0:
-            body = result.stdout
-            if result.stderr:
-                body += "\n\n--- 警告信息 ---\n" + result.stderr
-        else:
-            body = (
-                f"执行 gold_egg_price.py 出错（返回码: {result.returncode}）\n\n"
-                f"--- 标准输出 ---\n{result.stdout}\n"
-                f"--- 错误输出 ---\n{result.stderr}"
-            )
-    except subprocess.TimeoutExpired:
-        body = "执行 gold_egg_price.py 超时（60秒）"
-    except Exception as e:
-        body = f"执行 gold_egg_price.py 时发生异常: {e}"
-
-    return body
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+HISTORY_FILE = os.path.join(DATA_DIR, "price_history.json")
 
 
-def extract_gold_price(output_text):
-    match = re.search(r"黄金价格:\s*([\d]+\.?\d*)\s*元／克", output_text)
-    if match:
-        try:
-            return float(match.group(1))
-        except ValueError:
-            return None
-    return None
+def load_history():
+    if not os.path.exists(HISTORY_FILE):
+        return []
+    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
-def build_post_content(body_text, gold_price, is_high_price):
-    """构建飞书 post（富文本）消息结构"""
+def fmt_price(val, suffix=""):
+    if val is None:
+        return "—"
+    return f"{val:.2f}{suffix}"
+
+
+def fmt_ratio(val):
+    if val is None:
+        return "—"
+    return f"{val:.1f}"
+
+
+def ratio_status(val):
+    if val is None:
+        return ""
+    if val < RATIO_LOW:
+        return "偏低 ↓"
+    if val > RATIO_HIGH:
+        return "偏高 ↑"
+    return "正常 ✓"
+
+
+def delta_str(cur, prev):
+    """计算较前一日变动"""
+    if cur is None or prev is None:
+        return ""
+    diff = cur - prev
+    sign = "+" if diff >= 0 else ""
+    return f"  {sign}{diff:.2f}"
+
+
+def build_feishu_message(history):
+    """从历史数据构建飞书 post 消息"""
+    if not history:
+        return _simple_post("📊 黄金鸡蛋价格比例报告", "暂无数据")
+
+    today = history[0]
+    yesterday = history[1] if len(history) > 1 else {}
+
+    gold = today.get("gold_price")
+    egg = today.get("egg_price")
+    ratio = today.get("gold_egg_ratio")
+    errors = today.get("errors", [])
+
+    is_high_price = gold is not None and gold > GOLD_PRICE_ALERT_THRESHOLD
+
     lines = []
 
+    # ── 今日核心数据 ──
+    date_display = today["date"].replace("-", ".")
+    lines.append([{"tag": "text", "text": f"📅 {date_display}"}])
+    lines.append([{"tag": "text", "text": ""}])
+
+    gold_delta = delta_str(gold, yesterday.get("gold_price"))
+    egg_delta = delta_str(egg, yesterday.get("egg_price"))
+
+    lines.append([{"tag": "text", "text": f"💰 黄金　{fmt_price(gold)} 元/克{gold_delta}"}])
+    lines.append([{"tag": "text", "text": f"🥚 鸡蛋　{fmt_price(egg)} 元/斤{egg_delta}"}])
+
+    ratio_line = f"📐 比例　{fmt_ratio(ratio)}"
+    status = ratio_status(ratio)
+    if status:
+        ratio_line += f"　{status}"
+    lines.append([{"tag": "text", "text": ratio_line}])
+
+    lines.append([{"tag": "text", "text": f"📏 参考区间　{RATIO_LOW:.0f} — {RATIO_HIGH:.0f}"}])
+
+    if errors:
+        lines.append([{"tag": "text", "text": ""}])
+        for err in errors:
+            lines.append([{"tag": "text", "text": f"⚠️ {err}"}])
+
+    # ── 近 N 日走势 ──
+    recent = history[:TREND_DAYS]
+    if len(recent) > 1:
+        lines.append([{"tag": "text", "text": ""}])
+        lines.append([{"tag": "text", "text": f"━━━ 近{len(recent)}日走势 ━━━"}])
+
+        for rec in recent:
+            d = rec["date"][5:]
+            g = fmt_price(rec.get("gold_price"))
+            e = fmt_price(rec.get("egg_price"))
+            r = fmt_ratio(rec.get("gold_egg_ratio"))
+            lines.append([{"tag": "text", "text": f"{d}　金 {g}　蛋 {e}　比 {r}"}])
+
+    # ── 标题 ──
     if is_high_price:
-        lines.append([
-            {"tag": "text", "text": f"⚠️ 高价预警 ⚠️ 当前黄金价格 {gold_price:.2f} 元/克，超出阈值 {GOLD_PRICE_ALERT_THRESHOLD:.2f} 元/克\n"},
-        ])
-
-    for line in body_text.strip().split("\n"):
-        lines.append([{"tag": "text", "text": line}])
-
-    title = (
-        f"⚠️ 高价预警 | 黄金 {gold_price:.2f} 元/克"
-        if is_high_price
-        else "📊 黄金鸡蛋价格比例报告"
-    )
+        title = f"⚠️ 高价预警 | 黄金 {gold:.2f} 元/克"
+    else:
+        title = "📊 黄金鸡蛋价格比例报告"
 
     return {
         "zh_cn": {
@@ -99,10 +146,18 @@ def build_post_content(body_text, gold_price, is_high_price):
     }
 
 
-# ── 模式 1: Webhook ──
+def _simple_post(title, text):
+    return {
+        "zh_cn": {
+            "title": title,
+            "content": [[{"tag": "text", "text": text}]],
+        }
+    }
+
+
+# ── Webhook 发送 ──
 
 def gen_webhook_sign(secret):
-    """生成飞书 Webhook 签名（HMAC-SHA256）"""
     timestamp = str(int(time.time()))
     string_to_sign = f"{timestamp}\n{secret}"
     hmac_code = hmac.new(
@@ -113,7 +168,6 @@ def gen_webhook_sign(secret):
 
 
 def send_via_webhook(post_content):
-    """通过 Webhook URL 直接推送，无需 token / receive_id"""
     payload = {
         "msg_type": "post",
         "content": {"post": post_content},
@@ -130,7 +184,7 @@ def send_via_webhook(post_content):
     return data
 
 
-# ── 模式 2: App API ──
+# ── App API 发送 ──
 
 def get_tenant_access_token():
     resp = requests.post(TOKEN_URL, json={
@@ -175,10 +229,13 @@ def main():
         print("  方式二: 设置 FEISHU_APP_ID + FEISHU_APP_SECRET + FEISHU_RECEIVE_ID")
         return
 
-    body = get_report_body()
-    gold_price = extract_gold_price(body)
-    is_high_price = gold_price is not None and gold_price > GOLD_PRICE_ALERT_THRESHOLD
-    post_content = build_post_content(body, gold_price, is_high_price)
+    try:
+        history = load_history()
+    except Exception as e:
+        print(f"[send_feishu] 读取历史数据失败: {e}", file=sys.stderr)
+        history = []
+
+    post_content = build_feishu_message(history)
 
     try:
         if use_webhook:
