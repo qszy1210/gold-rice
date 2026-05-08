@@ -79,7 +79,7 @@ def build_post_content(body_text, gold_price, is_high_price):
 
     if is_high_price:
         lines.append([
-            {"tag": "text", "text": f"⚠️ 高价预警 ⚠️ 当前黄金价格 {gold_price:.2f} 元/克，超出阈值 {GOLD_PRICE_ALERT_THRESHOLD:.2f} 元/克\n", "style": ["bold"]},
+            {"tag": "text", "text": f"⚠️ 高价预警 ⚠️ 当前黄金价格 {gold_price:.2f} 元/克，超出阈值 {GOLD_PRICE_ALERT_THRESHOLD:.2f} 元/克\n"},
         ])
 
     for line in body_text.strip().split("\n"):
