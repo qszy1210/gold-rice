@@ -32,6 +32,7 @@ GOLD_PRICE_ALERT_THRESHOLD = 960.0
 RATIO_LOW = 80.0
 RATIO_HIGH = 150.0
 TREND_DAYS = 7
+MA_PERIOD = 20
 
 TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
 SEND_MSG_URL = "https://open.feishu.cn/open-apis/im/v1/messages"
@@ -78,6 +79,36 @@ def delta_str(cur, prev):
     return f"  {sign}{diff:.2f}"
 
 
+def calc_ma(history, field, period):
+    """从历史数据中取最近 period 个有效值计算移动平均线"""
+    values = []
+    for rec in history:
+        v = rec.get(field)
+        if v is not None:
+            values.append(v)
+        if len(values) == period:
+            break
+    if not values:
+        return None, 0
+    return sum(values) / len(values), len(values)
+
+
+def ma_signal(price, ma_val):
+    """根据当前价格与 MA 的偏离度给出做 T 信号"""
+    if price is None or ma_val is None:
+        return "", ""
+    pct = (price - ma_val) / ma_val * 100
+    if pct > 1.5:
+        return f"📈 高于 MA{MA_PERIOD}　{pct:+.2f}%", "💡 偏高，可考虑适当卖出"
+    if pct < -1.5:
+        return f"📉 低于 MA{MA_PERIOD}　{pct:+.2f}%", "💡 偏低，可考虑适当买入"
+    if pct > 0.5:
+        return f"📈 略高于 MA{MA_PERIOD}　{pct:+.2f}%", "🔍 接近均线偏上，观望为主"
+    if pct < -0.5:
+        return f"📉 略低于 MA{MA_PERIOD}　{pct:+.2f}%", "🔍 接近均线偏下，可关注"
+    return f"➡️ 贴近 MA{MA_PERIOD}　{pct:+.2f}%", "🔍 在均线附近，暂无明显信号"
+
+
 def build_feishu_message(history):
     """从历史数据构建飞书 post 消息"""
     if not history:
@@ -113,6 +144,17 @@ def build_feishu_message(history):
     lines.append([{"tag": "text", "text": ratio_line}])
 
     lines.append([{"tag": "text", "text": f"📏 参考区间　{RATIO_LOW:.0f} — {RATIO_HIGH:.0f}"}])
+
+    # ── MA20 均线分析 ──
+    ma_val, ma_count = calc_ma(history, "gold_price", MA_PERIOD)
+    if ma_val is not None and gold is not None:
+        deviation_line, suggestion = ma_signal(gold, ma_val)
+        lines.append([{"tag": "text", "text": ""}])
+        lines.append([{"tag": "text", "text": f"━━━ MA{MA_PERIOD} 均线分析（{ma_count}日）━━━"}])
+        lines.append([{"tag": "text", "text": f"📊 MA{MA_PERIOD}　{ma_val:.2f} 元/克"}])
+        lines.append([{"tag": "text", "text": deviation_line}])
+        if suggestion:
+            lines.append([{"tag": "text", "text": suggestion}])
 
     if errors:
         lines.append([{"tag": "text", "text": ""}])
