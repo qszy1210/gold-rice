@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -V
-          pip install requests beautifulsoup4
+          pip install requests beautifulsoup4 akshare
 
       - name: Fetch gold and egg prices
         run: |

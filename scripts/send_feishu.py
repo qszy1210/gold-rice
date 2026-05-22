@@ -137,6 +137,18 @@ def build_feishu_message(history):
     lines.append([{"tag": "text", "text": f"💰 黄金　{fmt_price(gold)} 元/克{gold_delta}"}])
     lines.append([{"tag": "text", "text": f"🥚 鸡蛋　{fmt_price(egg)} 元/斤{egg_delta}"}])
 
+    # 附加数据：鸡蛋期货、黄金 ETF 折溢价（小字）
+    egg_futures = today.get("egg_price_futures")
+    if egg_futures is not None:
+        lines.append([{"tag": "text", "text": f"🛢 鸡蛋期货 JD0　{egg_futures:.3f} 元/斤"}])
+    etf_price = today.get("gold_etf_518880")
+    etf_premium = today.get("gold_etf_premium_pct")
+    if etf_price is not None:
+        etf_line = f"📈 黄金 ETF 518880　{etf_price:.3f} 元/份"
+        if etf_premium is not None:
+            etf_line += f"　折溢价 {etf_premium:+.2f}%"
+        lines.append([{"tag": "text", "text": etf_line}])
+
     ratio_line = f"📐 比例　{fmt_ratio(ratio)}"
     status = ratio_status(ratio)
     if status:
@@ -144,6 +156,17 @@ def build_feishu_message(history):
     lines.append([{"tag": "text", "text": ratio_line}])
 
     lines.append([{"tag": "text", "text": f"📏 参考区间　{RATIO_LOW:.0f} — {RATIO_HIGH:.0f}"}])
+
+    # 比例 vs 最近 20 日均值偏离
+    ma_val = today.get("ratio_ma20")
+    ma_dev = today.get("ratio_ma20_deviation_pct")
+    ma_n = today.get("ratio_ma20_count") or 20
+    if ma_val is not None and ma_dev is not None:
+        direction = "↑" if ma_dev >= 0 else "↓"
+        lines.append(
+            [{"tag": "text",
+              "text": f"📊 近 {ma_n} 日均比　{ma_val:.1f}　今日{direction} {abs(ma_dev):.2f}%"}]
+        )
 
     # ── MA20 均线分析 ──
     ma_val, ma_count = calc_ma(history, "gold_price", MA_PERIOD)

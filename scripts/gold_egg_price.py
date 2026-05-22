@@ -3,14 +3,24 @@
 """
 gold_egg_price.py
 ===================
-这个脚本从公开网页抓取：
-  - 黄金（24K）价格：人民币 元／克
-  - 鸡蛋价格：人民币 元／斤 （假设网页单位为元／公斤）
-  - （可选后续）大米价格：人民币 元／斤
-然后计算：
-  - 黄金／鸡蛋 比例
-  - 黄金／大米 比例（如有数据）
-并将结果输出，包括日期、各项价格、比例、及是否处于参考区间。
+价格数据采集与统计。
+
+主数据源（akshare 官方交易所 API）：
+  - 黄金 Au99.99：ak.spot_hist_sge(symbol="Au99.99")          上海黄金交易所现货
+  - 黄金 ETF 518880：ak.fund_etf_hist_em(symbol="518880")     华安黄金 ETF（≈ 0.01g / 份）
+  - 鸡蛋期货 JD0：ak.futures_zh_daily_sina(symbol="JD0")      大商所主力连续（元/500kg）
+
+兜底数据源（网页爬虫）：
+  - SGE 网页表格（Au99.99 收盘价）
+  - 100ppi 现货报价文字（元/斤）
+
+输出口径：
+  - gold_price       : 元/克（主：SGE API；兜底：SGE 网页）
+  - egg_price        : 元/斤（主：100ppi 现货，与历史数据口径一致）
+  - egg_price_futures: 元/斤（鸡蛋期货 JD0 收盘 / 1000）
+  - gold_etf_518880  : 元/份（518880 ETF 收盘价）
+  - gold_etf_premium_pct : ETF 折溢价（>0 溢价，<0 折价）
+  - ratio_ma20       : 最近 20 日 gold_egg_ratio 均值（用于偏离监控）
 """
 
 import requests
@@ -23,20 +33,113 @@ import random
 import json
 import os
 
-# ============ 公共变量：数据源 URL 模板 ============
-# 上海黄金交易所每日行情数据（Au99.99 为 24K 黄金）
 GOLD_PRICE_URL_TEMPLATE = "https://www.sge.com.cn/sjzx/quotation_daily_new?start_date={date}&end_date={date}"
-
-# 鸡蛋价格数据源（中国鸡蛋产业网）
 EGG_PRICE_URL = "https://egg.100ppi.com/kx/"
 
-# 数据存储路径
+GOLD_ETF_SYMBOL = "518880"          # 华安黄金 ETF（份额 ≈ 0.01 克金）
+GOLD_ETF_SHARE_PER_GRAM = 100       # 1 克金 ≈ 100 份 ETF
+EGG_FUTURES_SYMBOL = "JD0"          # 鸡蛋期货主力连续
+EGG_FUTURES_UNIT_PER_JIN = 1000     # 元/500kg ÷ 1000 = 元/斤
+
+MA_WINDOW = 20                      # 比例移动平均窗口
+
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 HISTORY_FILE = os.path.join(DATA_DIR, "price_history.json")
 
+def _akshare():
+    """惰性导入 akshare，未安装时返回 None 让上游走 fallback"""
+    try:
+        import akshare as ak
+        return ak
+    except Exception as e:
+        print(f"[调试] akshare 不可用，将走兜底数据源: {e}", file=sys.stderr)
+        return None
+
+
+def get_gold_price_sge_api():
+    """主源：上海黄金交易所 Au99.99 现货最新收盘价（元/克）。失败返回 None。"""
+    ak = _akshare()
+    if ak is None:
+        return None
+    try:
+        df = ak.spot_hist_sge(symbol="Au99.99")
+        if df is None or df.empty:
+            return None
+        # 列：date, open, close, low, high；按日期排序后取最后一行
+        df = df.sort_values("date")
+        latest = df.iloc[-1]
+        price = float(latest["close"])
+        date = latest["date"]
+        print(f"[调试] SGE API Au99.99 收盘价: {price} 元/克（{date}）", file=sys.stderr)
+        return price
+    except Exception as e:
+        print(f"[调试] SGE API 获取失败，将走兜底网页源: {e}", file=sys.stderr)
+        return None
+
+
+def get_gold_etf_close():
+    """获取华安黄金 ETF 518880 最新收盘价（元/份）。失败返回 None。"""
+    ak = _akshare()
+    if ak is None:
+        return None
+    try:
+        # 拉最近 30 天足够找最新交易日
+        end_date = datetime.date.today().strftime("%Y%m%d")
+        start_date = (datetime.date.today() - datetime.timedelta(days=30)).strftime("%Y%m%d")
+        df = ak.fund_etf_hist_em(
+            symbol=GOLD_ETF_SYMBOL, period="daily",
+            start_date=start_date, end_date=end_date, adjust="",
+        )
+        if df is None or df.empty:
+            return None
+        # 列名是中文："日期, 开盘, 收盘, 最高, 最低, 成交量, 成交额, ..."
+        df = df.sort_values("日期")
+        price = float(df.iloc[-1]["收盘"])
+        print(f"[调试] ETF {GOLD_ETF_SYMBOL} 收盘价: {price} 元/份", file=sys.stderr)
+        return price
+    except Exception as e:
+        print(f"[调试] 黄金 ETF 获取失败: {e}", file=sys.stderr)
+        return None
+
+
+def get_egg_price_futures_per_jin():
+    """获取鸡蛋期货 JD0 主力连续合约最新收盘价，换算为元/斤。失败返回 None。"""
+    ak = _akshare()
+    if ak is None:
+        return None
+    try:
+        df = ak.futures_zh_daily_sina(symbol=EGG_FUTURES_SYMBOL)
+        if df is None or df.empty:
+            return None
+        # 列：date, open, high, low, close, volume, hold；单位 元/500kg
+        df = df.sort_values("date")
+        latest = df.iloc[-1]
+        close_per_500kg = float(latest["close"])
+        price_per_jin = close_per_500kg / EGG_FUTURES_UNIT_PER_JIN
+        date = latest["date"]
+        print(
+            f"[调试] 鸡蛋期货 {EGG_FUTURES_SYMBOL} 收盘 {close_per_500kg} 元/500kg "
+            f"→ {price_per_jin:.3f} 元/斤（{date}）",
+            file=sys.stderr,
+        )
+        return price_per_jin
+    except Exception as e:
+        print(f"[调试] 鸡蛋期货获取失败: {e}", file=sys.stderr)
+        return None
+
+
 def get_gold_price_per_g():
-    """从上海黄金交易所抓取 Au99.99（24K 黄金）每克价格（元／克）"""
-    # 尝试最近5天的数据（考虑周末和节假日）
+    """对外统一入口：先 akshare 主源，失败回退到 SGE 网页爬虫。"""
+    price = get_gold_price_sge_api()
+    if price is not None:
+        return price, "sge_api"
+    print("[调试] 主源 SGE API 失败，启用兜底网页爬虫", file=sys.stderr)
+    fallback_price = _gold_price_sge_html_fallback()
+    return fallback_price, "sge_html"
+
+
+def _gold_price_sge_html_fallback():
+    """兜底：从上海黄金交易所抓取 Au99.99 每克价格（元/克），保留原实现。"""
     for days_ago in range(5):
         query_date = (datetime.date.today() - datetime.timedelta(days=days_ago)).isoformat()
         url = GOLD_PRICE_URL_TEMPLATE.format(date=query_date)
@@ -119,8 +222,19 @@ def get_gold_price_per_g():
 
     raise ValueError("无法在页面中找到 Au99.99 的收盘价")
 
+
 def get_egg_price_per_jin():
-    """从"鸡蛋产业网–价格快讯"抓取鸡蛋参考价，然后转换为元／斤"""
+    """对外统一入口：现货为主（与历史口径一致），失败时不抛异常返回 None。"""
+    try:
+        price = _egg_price_100ppi_fallback()
+        return price, "100ppi"
+    except Exception as e:
+        print(f"[调试] 100ppi 现货获取失败: {e}", file=sys.stderr)
+        return None, "100ppi"
+
+
+def _egg_price_100ppi_fallback():
+    """从"鸡蛋产业网–价格快讯"抓取鸡蛋参考价，转换为元/斤。"""
     url = EGG_PRICE_URL
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -212,6 +326,32 @@ def save_price_data(data):
     except Exception as e:
         print(f"[错误] 保存数据失败: {e}", file=sys.stderr)
 
+def calc_ratio_ma(history, window=MA_WINDOW):
+    """从历史数据取最近 window 天有效的 gold_egg_ratio，返回均值与样本数。
+    history 已按日期倒序（最新在前）；当天数据应已存入再调用本函数。"""
+    values = []
+    for rec in history:
+        v = rec.get("gold_egg_ratio")
+        if v is not None:
+            values.append(v)
+        if len(values) >= window:
+            break
+    if not values:
+        return None, 0
+    return sum(values) / len(values), len(values)
+
+
+def calc_etf_premium_pct(etf_price, gold_price_per_g):
+    """ETF 折溢价 % = (实际价 - 理论价) / 理论价 * 100
+    理论价 = 克金价 / 100（518880 每份 ≈ 0.01g 金）"""
+    if etf_price is None or gold_price_per_g is None or gold_price_per_g <= 0:
+        return None
+    theoretical = gold_price_per_g / GOLD_ETF_SHARE_PER_GRAM
+    if theoretical <= 0:
+        return None
+    return (etf_price - theoretical) / theoretical * 100
+
+
 def generate_history_statistics():
     """生成最近30天的历史统计表格"""
     history = load_price_history()
@@ -282,42 +422,54 @@ def main():
     date_str = datetime.date.today().isoformat()
     error_messages = []
 
+    # ── 黄金现货（主源 + fallback）──
+    gold = None
+    gold_source = None
     try:
-        gold = get_gold_price_per_g()
+        gold, gold_source = get_gold_price_per_g()
+        if gold is None:
+            raise ValueError("两种来源（SGE API + 网页）均未取到黄金价格")
     except Exception as e:
         print(f"获取黄金价格失败: {e}", file=sys.stderr)
         error_messages.append(f"获取黄金价格失败: {e}")
-        gold = None
 
-    try:
-        egg = get_egg_price_per_jin()
-    except Exception as e:
-        print(f"获取鸡蛋价格失败: {e}", file=sys.stderr)
-        error_messages.append(f"获取鸡蛋价格失败: {e}")
-        egg = None
+    # ── 鸡蛋现货（100ppi）──
+    egg, egg_source = get_egg_price_per_jin()
+    if egg is None:
+        error_messages.append("获取鸡蛋现货价失败")
 
-    try:
-        rice = get_rice_price_per_jin()
-    except Exception as e:
-        rice = None
+    # ── 附加数据源（失败不阻塞）──
+    gold_etf = get_gold_etf_close()
+    gold_etf_premium_pct = calc_etf_premium_pct(gold_etf, gold)
+    egg_futures = get_egg_price_futures_per_jin()
+
+    rice = get_rice_price_per_jin()
 
     ratio_gold_egg = gold / egg if (gold is not None and egg is not None) else None
-    ratio_gold_rice = gold / rice if (gold is not None and rice not in (None,0)) else None
+    ratio_gold_rice = gold / rice if (gold is not None and rice not in (None, 0)) else None
 
-    # 参考阈值区间
     threshold_gold_egg = (80.0, 150.0)
     threshold_gold_rice = (100.0, 200.0)
 
+    # ── 打印 ──
     print(f"日期: {date_str}")
     if gold is not None:
-        print(f"黄金价格: {gold:.2f} 元／克")
+        print(f"黄金价格: {gold:.2f} 元／克  (来源: {gold_source})")
     else:
         print("黄金价格: N/A")
 
     if egg is not None:
-        print(f"鸡蛋价格: {egg:.2f} 元／斤")
+        print(f"鸡蛋价格: {egg:.2f} 元／斤  (来源: {egg_source})")
     else:
         print("鸡蛋价格: N/A")
+
+    if egg_futures is not None:
+        print(f"鸡蛋期货 JD0: {egg_futures:.3f} 元／斤  (大商所主力连续)")
+    if gold_etf is not None:
+        etf_line = f"黄金 ETF 518880: {gold_etf:.3f} 元／份"
+        if gold_etf_premium_pct is not None:
+            etf_line += f"  折溢价 {gold_etf_premium_pct:+.2f}%"
+        print(etf_line)
 
     if rice is not None:
         print(f"大米价格: {rice:.2f} 元／斤")
@@ -325,35 +477,71 @@ def main():
         print("大米价格: N/A")
 
     if ratio_gold_egg is not None:
-        status_egg = ("低于", "处于", "高于")[1 + (ratio_gold_egg > threshold_gold_egg[1]) - (ratio_gold_egg < threshold_gold_egg[0])]
-        print(f"黄金／鸡蛋 比例: {ratio_gold_egg:.1f} – {status_egg} 历史参考区间 {threshold_gold_egg[0]:.1f}-{threshold_gold_egg[1]:.1f}")
+        status_egg = ("低于", "处于", "高于")[
+            1 + (ratio_gold_egg > threshold_gold_egg[1]) - (ratio_gold_egg < threshold_gold_egg[0])
+        ]
+        print(
+            f"黄金／鸡蛋 比例: {ratio_gold_egg:.1f} – {status_egg} 历史参考区间 "
+            f"{threshold_gold_egg[0]:.1f}-{threshold_gold_egg[1]:.1f}"
+        )
     else:
         print("黄金／鸡蛋 比例: N/A")
 
     if ratio_gold_rice is not None:
-        status_rice = ("低于", "处于", "高于")[1 + (ratio_gold_rice > threshold_gold_rice[1]) - (ratio_gold_rice < threshold_gold_rice[0])]
-        print(f"黄金／大米 比例: {ratio_gold_rice:.1f} – {status_rice} 历史参考区间 {threshold_gold_rice[0]:.1f}-{threshold_gold_rice[1]:.1f}")
+        status_rice = ("低于", "处于", "高于")[
+            1 + (ratio_gold_rice > threshold_gold_rice[1]) - (ratio_gold_rice < threshold_gold_rice[0])
+        ]
+        print(
+            f"黄金／大米 比例: {ratio_gold_rice:.1f} – {status_rice} 历史参考区间 "
+            f"{threshold_gold_rice[0]:.1f}-{threshold_gold_rice[1]:.1f}"
+        )
     else:
         print("黄金／大米 比例: N/A")
 
-    # 如果有错误信息，输出到 stderr 和 stdout
     if error_messages:
         print("\n--- 警告信息 ---")
         for msg in error_messages:
             print(msg)
 
-    # 保存数据到历史记录
+    # ── 保存到历史 ──
     price_data = {
-        'date': date_str,
-        'timestamp': datetime.datetime.now().isoformat(),
-        'gold_price': gold,
-        'egg_price': egg,
-        'rice_price': rice,
-        'gold_egg_ratio': ratio_gold_egg,
-        'gold_rice_ratio': ratio_gold_rice,
-        'errors': error_messages
+        "date": date_str,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "gold_price": gold,
+        "gold_price_source": gold_source,
+        "egg_price": egg,
+        "egg_price_source": egg_source,
+        "egg_price_futures": egg_futures,
+        "egg_futures_contract": EGG_FUTURES_SYMBOL if egg_futures is not None else None,
+        "gold_etf_518880": gold_etf,
+        "gold_etf_premium_pct": gold_etf_premium_pct,
+        "rice_price": rice,
+        "gold_egg_ratio": ratio_gold_egg,
+        "gold_rice_ratio": ratio_gold_rice,
+        "errors": error_messages,
     }
     save_price_data(price_data)
+
+    # ── 20 日均比对照（必须在 save 之后，让今日值纳入计算）──
+    history = load_price_history()
+    ma_value, ma_count = calc_ratio_ma(history, MA_WINDOW)
+    if ma_value is not None and ratio_gold_egg is not None:
+        deviation_pct = (ratio_gold_egg - ma_value) / ma_value * 100
+        direction = "高于" if deviation_pct >= 0 else "低于"
+        print(
+            f"\n--- 比例统计 ---\n"
+            f"最近 {ma_count} 日均比: {ma_value:.1f}\n"
+            f"今日相对均值: {direction} {abs(deviation_pct):.2f}% （今日 {ratio_gold_egg:.1f} vs MA{ma_count} {ma_value:.1f}）"
+        )
+        # 回填到历史最新一条，方便前端/通知直接读
+        history[0]["ratio_ma20"] = round(ma_value, 4)
+        history[0]["ratio_ma20_deviation_pct"] = round(deviation_pct, 4)
+        history[0]["ratio_ma20_count"] = ma_count
+        try:
+            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+                json.dump(history, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[警告] 回填 ratio_ma20 失败: {e}", file=sys.stderr)
 
     # 输出最近30天历史统计
     print(generate_history_statistics())
