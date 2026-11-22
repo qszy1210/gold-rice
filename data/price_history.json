@@ -1,5 +1,24 @@
 [
   {
+    "date": "2026-11-22",
+    "timestamp": "2026-11-22T09:13:39.954841",
+    "gold_price": 764.55,
+    "gold_price_source": "sge_api",
+    "egg_price": 4.25,
+    "egg_price_source": "100ppi",
+    "egg_price_futures": 3.186,
+    "egg_futures_contract": "JD0",
+    "gold_etf_518880": 7.282,
+    "gold_etf_premium_pct": -4.75443071087567,
+    "rice_price": null,
+    "gold_egg_ratio": 179.8941176470588,
+    "gold_rice_ratio": null,
+    "errors": [],
+    "ratio_ma20": 193.8932,
+    "ratio_ma20_deviation_pct": -7.22,
+    "ratio_ma20_count": 20
+  },
+  {
     "date": "2026-11-21",
     "timestamp": "2026-11-21T09:05:11.636363",
     "gold_price": 764.55,
@@ -5308,16 +5327,6 @@
   {
     "date": "2025-11-23",
     "timestamp": "2025-11-23T03:23:36.076960",
-    "gold_price": 924.44,
-    "egg_price": 3.1,
-    "rice_price": null,
-    "gold_egg_ratio": 298.2064516129032,
-    "gold_rice_ratio": null,
-    "errors": []
-  },
-  {
-    "date": "2025-11-22",
-    "timestamp": "2025-11-22T03:00:42.094605",
     "gold_price": 924.44,
     "egg_price": 3.1,
     "rice_price": null,
